@@ -1,0 +1,182 @@
+import numpy as np
+import pandas as pd 
+import matplotlib.pyplot as plt
+import os 
+
+def create_directories(base, ThT_preprocessed_folder = "ThT_preprocessed/", PhC_preprocessed_folder = "PhC_preprocessed/", PhC_postprocessed_folder = "PhC_postprocessed/", ThT_postprocessed_folder = "ThT_postprocessed/", spore_data_folder = "Spore_Data/", plot_folder = "Data_Plots/"):
+  
+  folder_paths = []
+
+  for folder_name in [ThT_preprocessed_folder, PhC_preprocessed_folder, ThT_postprocessed_folder, PhC_postprocessed_folder, spore_data_folder, plot_folder]:
+    folder_path = base + folder_name
+    folder_paths.append(folder_path)
+    if not os.path.exists(folder_path):
+      os.makedirs(folder_path)  
+  
+  return folder_paths
+
+def read_spots(csv_path, base, output_folder) -> list[str]:
+  '''
+  takes in spot csv path
+  creates groups by track, sorted by time 
+  outputs csvs of each group item
+  return list of full paths of csvs
+  '''
+
+  individual_paths: list[str] = []
+
+  df = pd.read_csv(csv_path, skiprows = [1,2,3], index_col = False)
+  groups_by_track = df.sort_values(["FRAME"]).groupby("TRACK_ID")
+
+  for track_number, track_data in groups_by_track :
+    save_path = output_folder + "TRACK_" + str(track_number)+ ".csv"
+    individual_paths.append(save_path)
+    track_data.to_csv(save_path, index = False)
+  return individual_paths
+
+def post_process(csv_paths, output_path, data_type, frame_number = 289):
+  print(f"filtering {len(csv_paths)} tracks...")
+
+  processed_paths: list[str] = []
+
+  if data_type == "PhC":
+    min_num_frames = 12
+  if data_type == "ThT":
+    min_num_frames = frame_number
+
+  for csv_path in csv_paths:
+    df = pd.read_csv(csv_path)
+    track_id = df["TRACK_ID"][0]
+    num_frames_tracked = len(df)
+    first_frame_index = df["FRAME"][0]
+    if num_frames_tracked < min_num_frames:
+      continue
+    if first_frame_index != 0:
+      continue
+    
+    if data_type == "PhC":
+      germination_df = pd.DataFrame([[num_frames_tracked]], columns = ["GERMINATION_FRAME"])
+      df = pd.concat([df, germination_df], axis = 1)
+
+    output_csv = output_path + "TRACK_" + str(track_id) + ".csv"
+    processed_paths.append(output_csv)
+    df.to_csv(output_csv, index=False)
+
+  print(f"filtered out {len(csv_paths) - len(processed_paths)} tracks...")
+  print(f"left with {len(processed_paths)} tracks...")
+  
+  return processed_paths
+
+def match_positions(ThT_csv_paths, PhC_csv_paths, x_tol = 5, y_tol = 5) -> list[str, str]:
+
+  paired_df_paths: list[str, str] = []
+
+  for ThT_csv_path in ThT_csv_paths:
+    ThT_df = pd.read_csv(ThT_csv_path)
+    ThT_xpos = ThT_df["POSITION_X"].mean()
+    ThT_ypos = ThT_df["POSITION_Y"].mean()
+    for PhC_csv_path in PhC_csv_paths:
+      PhC_df = pd.read_csv(PhC_csv_path)
+      PhC_xpos = PhC_df["POSITION_X"].mean()
+      PhC_ypos = PhC_df["POSITION_Y"].mean()
+
+      diff_x = abs(ThT_xpos - PhC_xpos)
+      diff_y = abs(ThT_ypos - PhC_ypos)
+
+      if ((diff_x < x_tol) and (diff_y < y_tol)):
+        paired_df_paths.append([ThT_csv_path, PhC_csv_path])
+        break 
+
+  print(f"matched {len(paired_df_paths)} dataframes...")
+  return paired_df_paths
+
+def concatenate_dfs(output_folder, plot_folder, paired_df_paths, germinant_given) -> list[str]:
+  data_paths = []
+
+  for path_pair in paired_df_paths:
+    ThT_path = path_pair[0]
+    PhC_path = path_pair[1]
+    ThT_df = pd.read_csv(ThT_path)
+    PhC_df = pd.read_csv(PhC_path)
+    germination_frame = PhC_df["GERMINATION_FRAME"]
+    ThT_track = ThT_df["TRACK_ID"][0]
+
+    df = pd.concat([ThT_df, germination_frame], axis = 1)
+    df_path = output_folder + str(ThT_track) + ".csv"
+    data_paths.append(df_path)
+    df.to_csv(df_path)
+
+    #plotting
+    plt.clf()
+    plt.plot(df["FRAME"], df["MEAN_INTENSITY_CH1"])
+    
+    for germinant_time in germinant_given:
+      plt.axvline(germinant_time, color = "lightgrey", linestyle = "--")    
+    plt.axvline(germination_frame[0], color='red', linestyle='--', label = "Germination")
+    
+    plt.title(f"Spore {ThT_track}")
+    plt.xlabel("Frame")
+    plt.ylabel("Intensity")
+    
+    plt.savefig(plot_folder + str(ThT_track) + ".jpg")
+
+  print(f"data retrieved and plotted...")
+  return data_paths
+
+def convert_to_modeldata(csv_paths, output_csv, germinant_given):
+  model_data = []
+  
+
+  for spore_data in csv_paths:
+      df = pd.read_csv(spore_data)
+      
+      intensities_list: list[int] = df["MEAN_INTENSITY_CH1"].to_list()
+      germinant_exposure_list: list[int] = [1 if i in germinant_given else 0 for i in range(1, len(intensities_list) + 1)]
+      germination_frame: int = int(df["GERMINATION_FRAME"][0])
+      germination_list: list[int] = [1 if i >= germination_frame else 0 for i in range(1, len(intensities_list) + 1)] 
+
+      data_row = [str(intensities_list), str(germinant_exposure_list), str(germination_list)]
+      model_data.append(data_row)
+
+  model_df = pd.DataFrame(model_data, columns = ["Intensity - ThT", "Germinant Exposure", "Germinated - PhC"])
+  model_df.to_csv(output_csv)
+
+def Main(Analysis_base, PhC_base, PhC_csv_name, ThT_base, ThT_csv_name):
+
+  PhC_spot_path = PhC_base + PhC_csv_name
+  ThT_spot_path = ThT_base + ThT_csv_name
+
+
+  #make directories for data
+  [ThT_preprocessed_folder, PhC_preprocessed_folder, ThT_postprocessed_folder, PhC_postprocessed_folder, spore_data_folder, plot_folder] = create_directories(Analysis_base)
+  
+  print(f"working on PhC data...")
+  #divide entire spot file into csvs of tracks and process
+  #PhC
+  PhC_unprocessed_csv_paths: list[str] = read_spots(PhC_spot_path, Analysis_base, PhC_preprocessed_folder)
+  PhC_processed_csv_paths: list[str] = post_process(PhC_unprocessed_csv_paths, PhC_postprocessed_folder, "PhC")
+  print("\n")
+  #ThT
+  print(f"working on ThT data...")
+  ThT_unprocessed_csv_paths: list[str] = read_spots(ThT_spot_path, Analysis_base, ThT_preprocessed_folder)
+  ThT_processed_csv_paths: list[str] = post_process(ThT_unprocessed_csv_paths, ThT_postprocessed_folder, "ThT")
+
+  #Matching tracks 
+  print("\n")
+  matched: list[str] = match_positions(ThT_processed_csv_paths, PhC_processed_csv_paths)
+  data_paths = concatenate_dfs(spore_data_folder, plot_folder, matched, germinant_given)
+  convert_to_modeldata(data_paths, Analysis_base + "Model_Data.csv", germinant_given)
+
+if __name__ == "__main__":
+  germinant_given: list[str] = [12, 36, 60, 84, 108, 132, 156, 180, 204, 228, 252, 276]
+
+  Analysis_base = "/Users/alexandranava/Desktop/Spores/M4581_s1/Analysis/V3/"
+
+  PhC_base = "/Users/alexandranava/Desktop/Spores/M4581_s1/PhC Analysis V3/V3.1/"
+  PhC_csv_name = "PhC_TrackTable_Spots.csv"
+
+
+  ThT_base = "/Users/alexandranava/Desktop/Spores/M4581_s1/ThT Analysis V3/V3.1/"
+  ThT_csv_name = "ThT_TrackTable_Spots.csv"
+  
+  Main(Analysis_base, PhC_base, PhC_csv_name, ThT_base, ThT_csv_name)
