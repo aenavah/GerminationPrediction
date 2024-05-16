@@ -90,7 +90,7 @@ def match_positions(ThT_csv_paths, PhC_csv_paths, x_tol = 5, y_tol = 5) -> list[
   print(f"matched {len(paired_df_paths)} dataframes...")
   return paired_df_paths
 
-def concatenate_dfs(output_folder, plot_folder, paired_df_paths, germinant_given) -> list[str]:
+def concatenate_dfs(output_folder, paired_df_paths) -> list[str]:
   data_paths = []
 
   for path_pair in paired_df_paths:
@@ -106,29 +106,13 @@ def concatenate_dfs(output_folder, plot_folder, paired_df_paths, germinant_given
     data_paths.append(df_path)
     df.to_csv(df_path)
 
-    #plotting
-    plt.clf()
-    plt.plot(df["FRAME"], df["MEAN_INTENSITY_CH1"])
-    
-    for germinant_time in germinant_given:
-      plt.axvline(germinant_time, color = "lightgrey", linestyle = "--")    
-    plt.axvline(germination_frame[0], color='red', linestyle='--', label = "Germination")
-    
-    plt.title(f"Spore {ThT_track}")
-    plt.xlabel("Frame")
-    plt.ylabel("Intensity")
-    plt.ylim(0, 255)
-    
-    plt.legend()
-    plt.savefig(plot_folder + str(ThT_track) + ".jpg")
-
-  print(f"data retrieved and plotted...")
+  print(f"data retrieved...")
   return data_paths
 
-def convert_to_modeldata(csv_paths, output_csv, germinant_given):
+def convert_to_modeldata(csv_paths, output_csv, germinant_given, plot_folder):
   model_data = []
   
-
+  spore_index = 0
   for spore_data in csv_paths:
       df = pd.read_csv(spore_data)
       
@@ -140,8 +124,28 @@ def convert_to_modeldata(csv_paths, output_csv, germinant_given):
       data_row = [str(intensities_list), str(germinant_exposure_list), str(germination_list)]
       model_data.append(data_row)
 
+      #plotting
+      plt.clf()
+      plt.plot(df["FRAME"], df["MEAN_INTENSITY_CH1"])
+      
+      for germinant_time in germinant_given:
+        plt.axvline(germinant_time, color = "lightgrey", linestyle = "--")    
+      plt.axvline(germination_frame, color='red', linestyle='--', label = "Germination")
+      
+      plt.title(f"Spore {spore_index}")
+      plt.xlabel("Frame")
+      plt.ylabel("Intensity")
+      plt.ylim(0, 255)
+      
+      plt.legend()
+      plt.savefig(plot_folder + str(spore_index) + ".jpg")
+      spore_index += 1
+
   model_df = pd.DataFrame(model_data, columns = ["Intensity - ThT", "Germinant Exposure", "Germinated - PhC"])
   model_df.to_csv(output_csv)
+
+  print(f"converted to model data and plotted...")
+
 
 def Main(Analysis_base, PhC_base, PhC_csv_name, ThT_base, ThT_csv_name):
 
@@ -166,8 +170,8 @@ def Main(Analysis_base, PhC_base, PhC_csv_name, ThT_base, ThT_csv_name):
   #Matching tracks 
   print("\n")
   matched: list[str] = match_positions(ThT_processed_csv_paths, PhC_processed_csv_paths)
-  data_paths = concatenate_dfs(spore_data_folder, plot_folder, matched, germinant_given)
-  convert_to_modeldata(data_paths, Analysis_base + "Model_Data.csv", germinant_given)
+  data_paths = concatenate_dfs(spore_data_folder, matched)
+  convert_to_modeldata(data_paths, Analysis_base + "Model_Data.csv", germinant_given, plot_folder)
 
 if __name__ == "__main__":
   germinant_given: list[str] = [12, 36, 60, 84, 108, 132, 156, 180, 204, 228, 252, 276]
