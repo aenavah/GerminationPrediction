@@ -4,7 +4,8 @@ import matplotlib.pyplot as plt
 import os 
 
 def create_directories(base, ThT_preprocessed_folder = "ThT_preprocessed/", PhC_preprocessed_folder = "PhC_preprocessed/", PhC_postprocessed_folder = "PhC_postprocessed/", ThT_postprocessed_folder = "ThT_postprocessed/", spore_data_folder = "Spore_Data/", plot_folder = "Data_Plots/"):
-  
+  '''
+  creates folders for output if they dont exist and returns their paths'''
   folder_paths = []
 
   for folder_name in [ThT_preprocessed_folder, PhC_preprocessed_folder, ThT_postprocessed_folder, PhC_postprocessed_folder, spore_data_folder, plot_folder]:
@@ -35,6 +36,13 @@ def read_spots(csv_path, base, output_folder) -> list[str]:
   return individual_paths
 
 def post_process(csv_paths, output_path, data_type, frame_number = 289):
+  '''
+  removes tracks that dont exists at time 0 
+  for ThT data, confirms the tracks exists for all frames
+  for PhC data, removes them if they're less than an hour 
+  returns csv data paths that have been considered acceptable
+  '''
+  
   print(f"filtering {len(csv_paths)} tracks...")
 
   processed_paths: list[str] = []
@@ -49,12 +57,12 @@ def post_process(csv_paths, output_path, data_type, frame_number = 289):
     track_id = df["TRACK_ID"][0]
     num_frames_tracked = len(df)
     first_frame_index = df["FRAME"][0]
-    if num_frames_tracked < min_num_frames:
+    if num_frames_tracked < min_num_frames: 
       continue
     if first_frame_index != 0:
       continue
     
-    if data_type == "PhC":
+    if data_type == "PhC": #if PhC data, adds a columns that denotes when the frame is germinated
       germination_df = pd.DataFrame([[num_frames_tracked]], columns = ["GERMINATION_FRAME"])
       df = pd.concat([df, germination_df], axis = 1)
 
@@ -68,7 +76,12 @@ def post_process(csv_paths, output_path, data_type, frame_number = 289):
   return processed_paths
 
 def match_positions(ThT_csv_paths, PhC_csv_paths, x_tol = 5, y_tol = 5) -> list[str, str]:
-
+  '''
+  reads in two lists correpsonding to ThT csv paths and PhC csv paths
+  determines mean x and y positions for each 
+  if they're the same within a tolerance, paths are added as a tuple into a list 
+  returns list of matched paths from ThT and PhC
+  '''
   paired_df_paths: list[str, str] = []
 
   for ThT_csv_path in ThT_csv_paths:
@@ -91,6 +104,11 @@ def match_positions(ThT_csv_paths, PhC_csv_paths, x_tol = 5, y_tol = 5) -> list[
   return paired_df_paths
 
 def concatenate_dfs(output_folder, paired_df_paths) -> list[str]:
+  '''
+  reads in list of matched ThT and PhC paths
+  concatenates ThT df to germination frame from PhC df
+  returns list of paths of concatenated dfs
+  '''
   data_paths = []
 
   for path_pair in paired_df_paths:
@@ -109,7 +127,11 @@ def concatenate_dfs(output_folder, paired_df_paths) -> list[str]:
   print(f"data retrieved...")
   return data_paths
 
-def convert_to_modeldata(csv_paths, output_csv, germinant_given, plot_folder):
+def convert_to_modeldata(csv_paths, output_csv, germinant_given, plot_folder) -> None:
+  '''
+  takes in list of paths of csv data 
+  converts to df readable to the model and creates a csv file with all data 
+  '''
   model_data = []
   
   spore_index = 0
@@ -148,7 +170,7 @@ def convert_to_modeldata(csv_paths, output_csv, germinant_given, plot_folder):
 
 
 def Main(Analysis_base, PhC_base, PhC_csv_name, ThT_base, ThT_csv_name):
-
+  print("\n Running! \n")
   PhC_spot_path = PhC_base + PhC_csv_name
   ThT_spot_path = ThT_base + ThT_csv_name
 
@@ -172,7 +194,8 @@ def Main(Analysis_base, PhC_base, PhC_csv_name, ThT_base, ThT_csv_name):
   matched: list[str] = match_positions(ThT_processed_csv_paths, PhC_processed_csv_paths)
   data_paths = concatenate_dfs(spore_data_folder, matched)
   convert_to_modeldata(data_paths, Analysis_base + "Model_Data.csv", germinant_given, plot_folder)
-
+  print("\n")
+  print("Done!")
 if __name__ == "__main__":
   germinant_given: list[str] = [12, 36, 60, 84, 108, 132, 156, 180, 204, 228, 252, 276]
 
