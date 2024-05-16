@@ -117,7 +117,9 @@ def concatenate_dfs(output_folder, plot_folder, paired_df_paths, germinant_given
     plt.title(f"Spore {ThT_track}")
     plt.xlabel("Frame")
     plt.ylabel("Intensity")
+    plt.ylim(0, 255)
     
+    plt.legend()
     plt.savefig(plot_folder + str(ThT_track) + ".jpg")
 
   print(f"data retrieved and plotted...")
@@ -178,5 +180,5 @@ if __name__ == "__main__":
 
   ThT_base = "/Users/alexandranava/Desktop/Spores/M4581_s1/ThT Analysis V3/V3.1/"
   ThT_csv_name = "ThT_TrackTable_Spots.csv"
-  
+
   Main(Analysis_base, PhC_base, PhC_csv_name, ThT_base, ThT_csv_name)
