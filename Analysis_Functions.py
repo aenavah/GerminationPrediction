@@ -83,6 +83,7 @@ def match_positions(ThT_csv_paths, PhC_csv_paths, x_tol = 5, y_tol = 5) -> list[
   returns list of matched paths from ThT and PhC
   '''
   paired_df_paths: list[str, str] = []
+  locations: list[int, int] = []
 
   for ThT_csv_path in ThT_csv_paths:
     ThT_df = pd.read_csv(ThT_csv_path)
@@ -98,10 +99,11 @@ def match_positions(ThT_csv_paths, PhC_csv_paths, x_tol = 5, y_tol = 5) -> list[
 
       if ((diff_x < x_tol) and (diff_y < y_tol)):
         paired_df_paths.append([ThT_csv_path, PhC_csv_path])
+        locations.append([PhC_xpos, PhC_ypos])
         break 
 
   print(f"matched {len(paired_df_paths)} dataframes...")
-  return paired_df_paths
+  return paired_df_paths, locations
 
 def concatenate_dfs(output_folder, paired_df_paths) -> list[str]:
   '''
@@ -127,7 +129,7 @@ def concatenate_dfs(output_folder, paired_df_paths) -> list[str]:
   print(f"data retrieved...")
   return data_paths
 
-def convert_to_modeldata(csv_paths, output_csv, germinant_given, plot_folder) -> None:
+def convert_to_modeldata(csv_paths, output_csv, germinant_given, plot_folder, spatial_df) -> None:
   '''
   takes in list of paths of csv data 
   converts to df readable to the model and creates a csv file with all data 
@@ -139,31 +141,83 @@ def convert_to_modeldata(csv_paths, output_csv, germinant_given, plot_folder) ->
       df = pd.read_csv(spore_data)
       
       intensities_list: list[int] = df["MEAN_INTENSITY_CH1"].to_list()
-      germinant_exposure_list: list[int] = [1 if i in germinant_given else 0 for i in range(1, len(intensities_list) + 1)]
+      area_list = df["AREA"].to_list()
+      germinant_exposure_list: list[int] = [1 if i in germinant_given else 0 for i in range(0, len(intensities_list))]
       germination_frame: int = int(df["GERMINATION_FRAME"][0])
-      germination_list: list[int] = [1 if i >= germination_frame else 0 for i in range(1, len(intensities_list) + 1)] 
+      germination_list: list[int] = [1 if i >= germination_frame else 0 for i in range(0, len(intensities_list) )] 
+      
 
-      data_row = [str(intensities_list), str(germinant_exposure_list), str(germination_list)]
+      data_row = [str(intensities_list), str(area_list), str(germinant_exposure_list), str(germination_list)]
       model_data.append(data_row)
 
-      #plotting
-      plt.clf()
-      plt.plot(df["FRAME"], df["MEAN_INTENSITY_CH1"])
+      if plot_data == 1:
+        #-----plotting intensity
+        plt.clf()
+        plt.plot(df["FRAME"], df["MEAN_INTENSITY_CH1"])
+        
+        for germinant_time in germinant_given:
+          plt.axvline(germinant_time, color = "lightgrey", linestyle = "--")    
+        plt.axvline(germination_frame, color='red', linestyle='--', label = "Germination")
+        
+        plt.title(f"Spore {spore_index}")
+        plt.xlabel("Frame")
+        plt.ylabel("Intensity")
+        plt.ylim(0, 100)
+        
+        plt.legend()
+        plt.savefig(plot_folder + "Intensity_" + str(spore_index) + ".jpg")
+
+        #-----plotting area
+        plt.clf()
+        plt.plot(df["FRAME"], df["AREA"])
+        for germinant_time in germinant_given:
+          plt.axvline(germinant_time, color = "lightgrey", linestyle = "--")    
+        plt.axvline(germination_frame, color='red', linestyle='--', label = "Germination")
+        
+        plt.title(f"Spore {spore_index}")
+        plt.xlabel("Frame")
+        plt.ylabel("Area")
+        plt.ylim(0, 550)
+        
+        plt.legend()
+        plt.savefig(plot_folder + "Area_" + str(spore_index) + ".jpg")
+
+        #-----plotting ellipses
+        plt.clf()
+        plt.plot(df["FRAME"], df["ELLIPSE_MINOR"], label = "Ellipse Minor")
+        plt.plot(df["FRAME"], df["ELLIPSE_MAJOR"], label = "Ellipse Major")
+        for germinant_time in germinant_given:
+          plt.axvline(germinant_time, color = "lightgrey", linestyle = "--")    
+        plt.axvline(germination_frame, color='red', linestyle='--', label = "Germination")
+        
+        plt.title(f"Spore {spore_index}")
+        plt.xlabel("Frame")
+        plt.ylabel("Ellipse")
+        plt.ylim(5, 17)
       
-      for germinant_time in germinant_given:
-        plt.axvline(germinant_time, color = "lightgrey", linestyle = "--")    
-      plt.axvline(germination_frame, color='red', linestyle='--', label = "Germination")
-      
-      plt.title(f"Spore {spore_index}")
-      plt.xlabel("Frame")
-      plt.ylabel("Intensity")
-      plt.ylim(0, 255)
-      
-      plt.legend()
-      plt.savefig(plot_folder + str(spore_index) + ".jpg")
+        plt.legend()
+        plt.savefig(plot_folder + "Ellipse_" + str(spore_index) + ".jpg")
+
+        #-----plotting perimeters
+        plt.clf()
+        plt.plot(df["FRAME"], df["PERIMETER"])
+        for germinant_time in germinant_given:
+          plt.axvline(germinant_time, color = "lightgrey", linestyle = "--")    
+        plt.axvline(germination_frame, color='red', linestyle='--', label = "Germination")
+        
+        plt.title(f"Spore {spore_index}")
+        plt.xlabel("Frame")
+        plt.ylabel("Perimeter")
+        plt.ylim(50, 100)
+    
+        plt.legend()
+        plt.savefig(plot_folder + "Perimeter_" + str(spore_index) + ".jpg")
+
+      # iterate through next spore 
       spore_index += 1
 
-  model_df = pd.DataFrame(model_data, columns = ["Intensity - ThT", "Germinant Exposure", "Germinated - PhC"])
+  model_df = pd.DataFrame(model_data, columns = ["INTENSITY", "AREA", "GERMINANT EXPOSURE", "GERMINATION"])
+  model_df = pd.concat([model_df, spatial_df], axis = 1)
   model_df.to_csv(output_csv)
 
   print(f"converted to model data and plotted...")
@@ -191,13 +245,19 @@ def Main(Analysis_base, PhC_base, PhC_csv_name, ThT_base, ThT_csv_name):
 
   #Matching tracks 
   print("\n")
-  matched: list[str] = match_positions(ThT_processed_csv_paths, PhC_processed_csv_paths)
+  matched, locations = match_positions(ThT_processed_csv_paths, PhC_processed_csv_paths)
   data_paths = concatenate_dfs(spore_data_folder, matched)
-  convert_to_modeldata(data_paths, Analysis_base + "Model_Data.csv", germinant_given, plot_folder)
+  spatial_df = pd.DataFrame(locations, columns = ["X_POSITION", "Y_POSITION"])
+  print(spatial_df)
+  convert_to_modeldata(data_paths, Analysis_base + "Model_Data.csv", germinant_given, plot_folder, spatial_df)
   print("\n")
   print("Done!")
+  
 if __name__ == "__main__":
+  plot_data = 1
+
   germinant_given: list[str] = [12, 36, 60, 84, 108, 132, 156, 180, 204, 228, 252, 276]
+
 
   Analysis_base = "/Users/alexandranava/Desktop/Spores/M4581_s1/Analysis/V3/"
 
@@ -209,3 +269,5 @@ if __name__ == "__main__":
   ThT_csv_name = "ThT_TrackTable_Spots.csv"
 
   Main(Analysis_base, PhC_base, PhC_csv_name, ThT_base, ThT_csv_name)
+
+  #right now the plots are saved by range, can be mapped back to tht track in saving. 
