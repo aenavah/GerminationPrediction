@@ -145,9 +145,11 @@ def convert_to_modeldata(csv_paths, output_csv, germinant_given, plot_folder, sp
       germinant_exposure_list: list[int] = [1 if i in germinant_given else 0 for i in range(0, len(intensities_list))]
       germination_frame: int = int(df["GERMINATION_FRAME"][0])
       germination_list: list[int] = [1 if i >= germination_frame else 0 for i in range(0, len(intensities_list) )] 
+      ellipse_minor_list: list[int] = df["ELLIPSE_MINOR"].to_list()
+      ellipse_major_list: list[int] = df["ELLIPSE_MAJOR"].to_list()
       
 
-      data_row = [str(intensities_list), str(area_list), str(germinant_exposure_list), str(germination_list)]
+      data_row = [str(intensities_list), str(area_list), str(germinant_exposure_list), str(germination_list), str(ellipse_minor_list), str(ellipse_major_list)]
       model_data.append(data_row)
 
       if plot_data == 1:
@@ -216,7 +218,7 @@ def convert_to_modeldata(csv_paths, output_csv, germinant_given, plot_folder, sp
       # iterate through next spore 
       spore_index += 1
 
-  model_df = pd.DataFrame(model_data, columns = ["INTENSITY", "AREA", "GERMINANT EXPOSURE", "GERMINATION"])
+  model_df = pd.DataFrame(model_data, columns = ["INTENSITY", "AREA", "GERMINANT EXPOSURE", "GERMINATION", "ELLIPSE MINOR", "ELLIPSE MAJOR"])
   model_df = pd.concat([model_df, spatial_df], axis = 1)
   model_df.to_csv(output_csv)
 
