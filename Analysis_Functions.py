@@ -35,7 +35,7 @@ def read_spots(csv_path, base, output_folder) -> list[str]:
     track_data.to_csv(save_path, index = False)
   return individual_paths
 
-def post_process(csv_paths, output_path, data_type, frame_number = 289):
+def post_process(csv_paths, output_path, data_type, frame_number):
   '''
   removes tracks that dont exists at time 0 
   for ThT data, confirms the tracks exists for all frames
@@ -135,23 +135,28 @@ def convert_to_modeldata(csv_paths, output_csv, germinant_given, plot_folder, sp
   converts to df readable to the model and creates a csv file with all data 
   '''
   model_data = []
-  
+  model_data_V2 = []
   spore_index = 0
   for spore_data in csv_paths:
       df = pd.read_csv(spore_data)
-      
+      spore_id_list: list[int] = df["TRACK_ID"].to_list()
+      frame_list: list[int] = df["FRAME"].to_list()
       intensities_list: list[int] = df["MEAN_INTENSITY_CH1"].to_list()
       area_list = df["AREA"].to_list()
       germinant_exposure_list: list[int] = [1 if i in germinant_given else 0 for i in range(0, len(intensities_list))]
       germination_frame: int = int(df["GERMINATION_FRAME"][0])
-      germination_list: list[int] = [1 if i >= germination_frame else 0 for i in range(0, len(intensities_list) )] 
+      germination_list: list[int] = [1 if i >= germination_frame else 0 for i in range(0, len(intensities_list))] 
       ellipse_minor_list: list[int] = df["ELLIPSE_MINOR"].to_list()
       ellipse_major_list: list[int] = df["ELLIPSE_MAJOR"].to_list()
       perimeter_list: list[int] = df["PERIMETER"].to_list()
       circularity_list: list[int] = df["CIRCULARITY"].to_list()
-      
+      xpos: int = np.mean(df["POSITION_X"])
+      ypos: int = np.mean(df["POSITION_Y"])
 
-      data_row = [str(intensities_list), str(area_list), str(germinant_exposure_list), str(germination_list), str(ellipse_minor_list), str(ellipse_major_list), str(perimeter_list), str(circularity_list)]
+      for i in range(len(spore_id_list)):
+        model_data_V2.append([spore_id_list[i], frame_list[i], xpos, ypos, germination_list[i], intensities_list[i], area_list[i], germinant_exposure_list[i], ellipse_minor_list[i], ellipse_major_list[i], perimeter_list[i], circularity_list[i]])
+
+      data_row = [str(intensities_list), str(area_list), str(germinant_exposure_list), str(germination_list), str(ellipse_minor_list), str(ellipse_major_list), str(perimeter_list), str(circularity_list), str(frame_list)]
       model_data.append(data_row)
 
       if plot_data == 1:
@@ -220,14 +225,18 @@ def convert_to_modeldata(csv_paths, output_csv, germinant_given, plot_folder, sp
       # iterate through next spore 
       spore_index += 1
 
-  model_df = pd.DataFrame(model_data, columns = ["INTENSITY", "AREA", "GERMINANT EXPOSURE", "GERMINATION", "ELLIPSE MINOR", "ELLIPSE MAJOR", "PERIMETER", "CIRCULARITY"])
+  #compact verisno
+  model_df = pd.DataFrame(model_data, columns = ["INTENSITY", "AREA", "GERMINANT EXPOSURE", "GERMINATION", "ELLIPSE MINOR", "ELLIPSE MAJOR", "PERIMETER", "CIRCULARITY", "FRAME LIST"])
   model_df = pd.concat([model_df, spatial_df], axis = 1)
   model_df.to_csv(output_csv)
 
+  #long version
+  model_df_V2 = pd.DataFrame(model_data_V2, columns = ["SPORE_ID", "FRAME", "X_POSITION", "Y_POSITION", "GERMINATION", "INTENSITY", "AREA", "GERMINANT_EXPOSURE", "ELLIPSE_MINOR", "ELLIPSE_MAJOR", "PERIMETER", "CIRCULARITY"])
+  model_df_V2.to_csv(output_csv.replace(".csv", "_V2.csv"))
   print(f"converted to model data and plotted...")
 
 
-def Main(Analysis_base, PhC_base, PhC_csv_name, ThT_base, ThT_csv_name):
+def Main(Analysis_base, PhC_base, PhC_csv_name, ThT_base, ThT_csv_name, num_frames, spore_set_id, xtol, ytol):
   print("\n Running! \n")
   PhC_spot_path = PhC_base + PhC_csv_name
   ThT_spot_path = ThT_base + ThT_csv_name
@@ -240,29 +249,28 @@ def Main(Analysis_base, PhC_base, PhC_csv_name, ThT_base, ThT_csv_name):
   #divide entire spot file into csvs of tracks and process
   #PhC
   PhC_unprocessed_csv_paths: list[str] = read_spots(PhC_spot_path, Analysis_base, PhC_preprocessed_folder)
-  PhC_processed_csv_paths: list[str] = post_process(PhC_unprocessed_csv_paths, PhC_postprocessed_folder, "PhC")
+  PhC_processed_csv_paths: list[str] = post_process(PhC_unprocessed_csv_paths, PhC_postprocessed_folder, "PhC", num_frames)
   print("\n")
   #ThT
   print(f"working on ThT data...")
   ThT_unprocessed_csv_paths: list[str] = read_spots(ThT_spot_path, Analysis_base, ThT_preprocessed_folder)
-  ThT_processed_csv_paths: list[str] = post_process(ThT_unprocessed_csv_paths, ThT_postprocessed_folder, "ThT")
+  ThT_processed_csv_paths: list[str] = post_process(ThT_unprocessed_csv_paths, ThT_postprocessed_folder, "ThT", num_frames)
 
   #Matching tracks 
   print("\n")
-  matched, locations = match_positions(ThT_processed_csv_paths, PhC_processed_csv_paths)
+  matched, locations = match_positions(ThT_processed_csv_paths, PhC_processed_csv_paths, xtol, ytol)
   data_paths = concatenate_dfs(spore_data_folder, matched)
   spatial_df = pd.DataFrame(locations, columns = ["X_POSITION", "Y_POSITION"])
-  print(spatial_df)
-  convert_to_modeldata(data_paths, Analysis_base + "Model_Data.csv", germinant_given, plot_folder, spatial_df)
+  convert_to_modeldata(data_paths, Analysis_base + spore_set_id + "_Model_Data.csv", germinant_given, plot_folder, spatial_df)
   print("\n")
   print("Done!")
   
 if __name__ == "__main__":
   plot_data = 1
 
-  germinant_given: list[str] = [12, 36, 60, 84, 108, 132, 156, 180, 204, 228, 252, 276]
+  germinant_given: list[str] = [11, 35, 59, 83, 107, 131, 155, 179, 203, 227, 251, 275]
 
-
+  '''M4581_s1 Analysis'''
   Analysis_base = "/Users/alexandranava/Desktop/Spores/M4581_s1/Analysis/V3/"
 
   PhC_base = "/Users/alexandranava/Desktop/Spores/M4581_s1/PhC Analysis V3/V3.1/"
@@ -271,7 +279,18 @@ if __name__ == "__main__":
 
   ThT_base = "/Users/alexandranava/Desktop/Spores/M4581_s1/ThT Analysis V3/V3.1/"
   ThT_csv_name = "ThT_TrackTable_Spots.csv"
-
-  Main(Analysis_base, PhC_base, PhC_csv_name, ThT_base, ThT_csv_name)
+  num_frames = 289
+  spore_set_id = "M4581_s1"
+  Main(Analysis_base, PhC_base, PhC_csv_name, ThT_base, ThT_csv_name, num_frames, spore_set_id, 5, 5)
 
   #right now the plots are saved by range, can be mapped back to tht track in saving. 
+
+  '''M4576_s2 Analysis'''
+  Analysis_base = "/Users/alexandranava/Desktop/Spores/M4576_s2/"
+  PhC_base = Analysis_base + "PhC Analysis/"
+  ThT_base = Analysis_base + "ThT Analysis/"
+  PhC_csv_name = "PhC_TrackTable_Spots.csv"
+  ThT_csv_name = "ThT_TrackTable_Spots.csv"
+  num_frames = 276
+  spore_set_id = "M4576_s2"
+  Main(Analysis_base, PhC_base, PhC_csv_name, ThT_base, ThT_csv_name, num_frames, spore_set_id, 3, 3)
