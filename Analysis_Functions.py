@@ -150,13 +150,14 @@ def convert_to_modeldata(csv_paths, output_csv, germinant_given, plot_folder, sp
       ellipse_major_list: list[int] = df["ELLIPSE_MAJOR"].to_list()
       perimeter_list: list[int] = df["PERIMETER"].to_list()
       circularity_list: list[int] = df["CIRCULARITY"].to_list()
+      ellipse_aspect_list: list[int] = df["ELLIPSE_ASPECTRATIO"].to_list()
       xpos: int = np.mean(df["POSITION_X"])
       ypos: int = np.mean(df["POSITION_Y"])
 
       for i in range(len(spore_id_list)):
-        model_data_V2.append([spore_id_list[i], frame_list[i], xpos, ypos, germination_list[i], intensities_list[i], area_list[i], germinant_exposure_list[i], ellipse_minor_list[i], ellipse_major_list[i], perimeter_list[i], circularity_list[i]])
+        model_data_V2.append([spore_id_list[i], frame_list[i], xpos, ypos, germination_list[i], intensities_list[i], area_list[i], germinant_exposure_list[i], ellipse_minor_list[i], ellipse_major_list[i], perimeter_list[i], circularity_list[i], ellipse_aspect_list[i]])
 
-      data_row = [str(intensities_list), str(area_list), str(germinant_exposure_list), str(germination_list), str(ellipse_minor_list), str(ellipse_major_list), str(perimeter_list), str(circularity_list), str(frame_list)]
+      data_row = [str(intensities_list), str(area_list), str(germinant_exposure_list), str(germination_list), str(ellipse_minor_list), str(ellipse_major_list), str(perimeter_list), str(circularity_list), str(frame_list), str(ellipse_aspect_list)]
       model_data.append(data_row)
 
       if plot_data == 1:
@@ -226,12 +227,12 @@ def convert_to_modeldata(csv_paths, output_csv, germinant_given, plot_folder, sp
       spore_index += 1
 
   #compact verisno
-  model_df = pd.DataFrame(model_data, columns = ["INTENSITY", "AREA", "GERMINANT EXPOSURE", "GERMINATION", "ELLIPSE MINOR", "ELLIPSE MAJOR", "PERIMETER", "CIRCULARITY", "FRAME LIST"])
+  model_df = pd.DataFrame(model_data, columns = ["INTENSITY", "AREA", "GERMINANT EXPOSURE", "GERMINATION", "ELLIPSE MINOR", "ELLIPSE MAJOR", "PERIMETER", "CIRCULARITY", "FRAME LIST", "ELLIPSE ASPECT RATIO"])
   model_df = pd.concat([model_df, spatial_df], axis = 1)
   model_df.to_csv(output_csv)
 
   #long version
-  model_df_V2 = pd.DataFrame(model_data_V2, columns = ["SPORE_ID", "FRAME", "X_POSITION", "Y_POSITION", "GERMINATION", "INTENSITY", "AREA", "GERMINANT_EXPOSURE", "ELLIPSE_MINOR", "ELLIPSE_MAJOR", "PERIMETER", "CIRCULARITY"])
+  model_df_V2 = pd.DataFrame(model_data_V2, columns = ["SPORE_ID", "FRAME", "X_POSITION", "Y_POSITION", "GERMINATION", "INTENSITY", "AREA", "GERMINANT_EXPOSURE", "ELLIPSE_MINOR", "ELLIPSE_MAJOR", "PERIMETER", "CIRCULARITY", "ELLIPSE ASPECT RATIO"])
   model_df_V2.to_csv(output_csv.replace(".csv", "_V2.csv"))
   print(f"converted to model data and plotted...")
 
