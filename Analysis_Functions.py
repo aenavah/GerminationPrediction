@@ -16,6 +16,22 @@ def create_directories(base, ThT_preprocessed_folder = "ThT_preprocessed/", PhC_
   
   return folder_paths
 
+def calculate_exposure(num_frames, initial_exposure, time_between_exposure, time_between_frames) -> list[int]:
+
+  frames_between_exposures = time_between_exposure/time_between_frames
+  first_frame_exposure = initial_exposure/time_between_frames - 1
+
+  print(f"first germinant exposure: {first_frame_exposure}")
+  print(f"time between germinant exposures: {frames_between_exposures}")
+
+  exposure_frames = [first_frame_exposure]
+
+  while exposure_frames[-1] + frames_between_exposures < num_frames:
+    exposure_frames.append(exposure_frames[-1] + frames_between_exposures)
+
+  return first_frame_exposure, frames_between_exposures, exposure_frames
+
+
 def read_spots(csv_path, base, output_folder) -> list[str]:
   '''
   takes in spot csv path
@@ -35,7 +51,7 @@ def read_spots(csv_path, base, output_folder) -> list[str]:
     track_data.to_csv(save_path, index = False)
   return individual_paths
 
-def post_process(csv_paths, output_path, data_type, frame_number):
+def post_process(csv_paths, output_path, data_type, frame_number, first_exposure_frame):
   '''
   removes tracks that dont exists at time 0 
   for ThT data, confirms the tracks exists for all frames
@@ -47,6 +63,7 @@ def post_process(csv_paths, output_path, data_type, frame_number):
 
   processed_paths: list[str] = []
 
+  ThT_removed_length = 0
   if data_type == "PhC":
     min_num_frames = 12
   if data_type == "ThT":
@@ -58,10 +75,21 @@ def post_process(csv_paths, output_path, data_type, frame_number):
     num_frames_tracked = len(df)
     first_frame_index = df["FRAME"][0]
     if num_frames_tracked < min_num_frames: 
+      if data_type == "ThT":
+        ThT_removed_length += 1
       continue
     if first_frame_index != 0:
       continue
-    
+    if data_type == "ThT":
+      #filter if end intensity lower than start intensity
+      if df["MEAN_INTENSITY_CH1"].iloc[num_frames_tracked - 10: num_frames_tracked-1].mean() <= df["MEAN_INTENSITY_CH1"].iloc[0:int(first_exposure_frame)].mean():
+        continue
+      # filter if end intensity lower than entire movie average 
+      if df["MEAN_INTENSITY_CH1"].iloc[num_frames_tracked - 20: num_frames_tracked - 1].mean() < df["MEAN_INTENSITY_CH1"].iloc[int(first_exposure_frame): num_frames_tracked - 1].mean():
+        continue
+    if data_type == "PhC":
+      if num_frames_tracked >= frame_number-5:
+        continue
     if data_type == "PhC": #if PhC data, adds a columns that denotes when the frame is germinated
       germination_df = pd.DataFrame([[num_frames_tracked]], columns = ["GERMINATION_FRAME"])
       df = pd.concat([df, germination_df], axis = 1)
@@ -69,7 +97,8 @@ def post_process(csv_paths, output_path, data_type, frame_number):
     output_csv = output_path + "TRACK_" + str(track_id) + ".csv"
     processed_paths.append(output_csv)
     df.to_csv(output_csv, index=False)
-
+  if data_type == "ThT":
+    print(f"{ThT_removed_length} tracks removed because of length...")
   print(f"filtered out {len(csv_paths) - len(processed_paths)} tracks...")
   print(f"left with {len(processed_paths)} tracks...")
   
@@ -129,7 +158,7 @@ def concatenate_dfs(output_folder, paired_df_paths) -> list[str]:
   print(f"data retrieved...")
   return data_paths
 
-def convert_to_modeldata(csv_paths, output_csv, germinant_given, plot_folder, spatial_df) -> None:
+def convert_to_modeldata(csv_paths, output_csv, germinant_given, plot_folder, spatial_df, plot_data = 1) -> None:
   '''
   takes in list of paths of csv data 
   converts to df readable to the model and creates a csv file with all data 
@@ -172,56 +201,10 @@ def convert_to_modeldata(csv_paths, output_csv, germinant_given, plot_folder, sp
         plt.title(f"Spore {spore_index}")
         plt.xlabel("Frame")
         plt.ylabel("Intensity")
-        plt.ylim(0, 100)
+        #plt.ylim(200, 300)
         
         plt.legend()
         plt.savefig(plot_folder + "Intensity_" + str(spore_index) + ".jpg")
-
-        #-----plotting area
-        plt.clf()
-        plt.plot(df["FRAME"], df["AREA"])
-        for germinant_time in germinant_given:
-          plt.axvline(germinant_time, color = "lightgrey", linestyle = "--")    
-        plt.axvline(germination_frame, color='red', linestyle='--', label = "Germination")
-        
-        plt.title(f"Spore {spore_index}")
-        plt.xlabel("Frame")
-        plt.ylabel("Area")
-        plt.ylim(0, 550)
-        
-        plt.legend()
-        plt.savefig(plot_folder + "Area_" + str(spore_index) + ".jpg")
-
-        #-----plotting ellipses
-        plt.clf()
-        plt.plot(df["FRAME"], df["ELLIPSE_MINOR"], label = "Ellipse Minor")
-        plt.plot(df["FRAME"], df["ELLIPSE_MAJOR"], label = "Ellipse Major")
-        for germinant_time in germinant_given:
-          plt.axvline(germinant_time, color = "lightgrey", linestyle = "--")    
-        plt.axvline(germination_frame, color='red', linestyle='--', label = "Germination")
-        
-        plt.title(f"Spore {spore_index}")
-        plt.xlabel("Frame")
-        plt.ylabel("Ellipse")
-        plt.ylim(5, 17)
-      
-        plt.legend()
-        plt.savefig(plot_folder + "Ellipse_" + str(spore_index) + ".jpg")
-
-        #-----plotting perimeters
-        plt.clf()
-        plt.plot(df["FRAME"], df["PERIMETER"])
-        for germinant_time in germinant_given:
-          plt.axvline(germinant_time, color = "lightgrey", linestyle = "--")    
-        plt.axvline(germination_frame, color='red', linestyle='--', label = "Germination")
-        
-        plt.title(f"Spore {spore_index}")
-        plt.xlabel("Frame")
-        plt.ylabel("Perimeter")
-        plt.ylim(50, 100)
-    
-        plt.legend()
-        plt.savefig(plot_folder + "Perimeter_" + str(spore_index) + ".jpg")
 
       # iterate through next spore 
       spore_index += 1
@@ -235,13 +218,23 @@ def convert_to_modeldata(csv_paths, output_csv, germinant_given, plot_folder, sp
   model_df_V2 = pd.DataFrame(model_data_V2, columns = ["SPORE_ID", "FRAME", "X_POSITION", "Y_POSITION", "GERMINATION", "INTENSITY", "AREA", "GERMINANT_EXPOSURE", "ELLIPSE_MINOR", "ELLIPSE_MAJOR", "PERIMETER", "CIRCULARITY", "ELLIPSE ASPECT RATIO"])
   model_df_V2.to_csv(output_csv.replace(".csv", "_V2.csv"))
   print(f"converted to model data and plotted...")
+def plot_spatial(trackfile_spot_path, width, height):
+  df = pd.read_csv(trackfile_spot_path)
+  df["POSITION_X"] = pd.to_numeric(df["POSITION_X"], errors='coerce')
+  df["POSITION_Y"] = pd.to_numeric(df["POSITION_Y"], errors='coerce')
+  df_tracks = df.groupby(by = "TRACK_ID")
+  for track_id, spore in df_tracks:
+      x = spore["POSITION_X"].mean()
+      y = spore["POSITION_Y"].mean()
+      plt.scatter(x, y)
+  plt.show()
 
-
-def Main(Analysis_base, PhC_base, PhC_csv_name, ThT_base, ThT_csv_name, num_frames, spore_set_id, xtol, ytol):
+def Main(Analysis_base, PhC_base, PhC_csv_name, ThT_base, ThT_csv_name, num_frames, first_germinant, time_between_germinant, time_between_frames, spore_set_id, xtol, ytol, plot_data = 1):
   print("\n Running! \n")
   PhC_spot_path = PhC_base + PhC_csv_name
   ThT_spot_path = ThT_base + ThT_csv_name
 
+  first_frame_exposure, frames_between_exposures, germinant_exposures = calculate_exposure(num_frames, first_germinant, time_between_germinant, time_between_frames)
 
   #make directories for data
   [ThT_preprocessed_folder, PhC_preprocessed_folder, ThT_postprocessed_folder, PhC_postprocessed_folder, spore_data_folder, plot_folder] = create_directories(Analysis_base)
@@ -250,26 +243,27 @@ def Main(Analysis_base, PhC_base, PhC_csv_name, ThT_base, ThT_csv_name, num_fram
   #divide entire spot file into csvs of tracks and process
   #PhC
   PhC_unprocessed_csv_paths: list[str] = read_spots(PhC_spot_path, Analysis_base, PhC_preprocessed_folder)
-  PhC_processed_csv_paths: list[str] = post_process(PhC_unprocessed_csv_paths, PhC_postprocessed_folder, "PhC", num_frames)
+  PhC_processed_csv_paths: list[str] = post_process(PhC_unprocessed_csv_paths, PhC_postprocessed_folder, "PhC", num_frames, first_frame_exposure)
   print("\n")
   #ThT
   print(f"working on ThT data...")
   ThT_unprocessed_csv_paths: list[str] = read_spots(ThT_spot_path, Analysis_base, ThT_preprocessed_folder)
-  ThT_processed_csv_paths: list[str] = post_process(ThT_unprocessed_csv_paths, ThT_postprocessed_folder, "ThT", num_frames)
+  ThT_processed_csv_paths: list[str] = post_process(ThT_unprocessed_csv_paths, ThT_postprocessed_folder, "ThT", num_frames, first_frame_exposure)
 
   #Matching tracks 
   print("\n")
   matched, locations = match_positions(ThT_processed_csv_paths, PhC_processed_csv_paths, xtol, ytol)
   data_paths = concatenate_dfs(spore_data_folder, matched)
   spatial_df = pd.DataFrame(locations, columns = ["X_POSITION", "Y_POSITION"])
-  convert_to_modeldata(data_paths, Analysis_base + spore_set_id + "_Model_Data.csv", germinant_given, plot_folder, spatial_df)
+  convert_to_modeldata(data_paths, Analysis_base + spore_set_id + "_Model_Data.csv", germinant_exposures, plot_folder, spatial_df, plot_data)
   print("\n")
   print("Done!")
   
+
 if __name__ == "__main__":
   plot_data = 1
 
-  germinant_given: list[str] = [11, 35, 59, 83, 107, 131, 155, 179, 203, 227, 251, 275]
+  #germinant_given: list[str] = [11, 35, 59, 83, 107, 131, 155, 179, 203, 227, 251, 275]
 
   '''M4581_s1 Analysis'''
   Analysis_base = "/Users/alexandranava/Desktop/Spores/M4581_s1/Analysis/V3/"
@@ -294,4 +288,4 @@ if __name__ == "__main__":
   ThT_csv_name = "ThT_TrackTable_Spots.csv"
   num_frames = 276
   spore_set_id = "M4576_s2"
-  Main(Analysis_base, PhC_base, PhC_csv_name, ThT_base, ThT_csv_name, num_frames, spore_set_id, 3, 3)
+  Main(Analysis_base, PhC_base, PhC_csv_name, ThT_base, ThT_csv_name, num_frames, spore_set_id, 3, 3, plot_data)
