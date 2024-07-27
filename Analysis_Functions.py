@@ -51,7 +51,7 @@ def read_spots(csv_path, base, output_folder) -> list[str]:
     track_data.to_csv(save_path, index = False)
   return individual_paths
 
-def post_process(csv_paths, output_path, data_type, frame_number, first_exposure_frame):
+def post_process(csv_paths, output_path, data_type, frame_number, first_exposure_frame, spore_set_id = None):
   '''
   removes tracks that dont exists at time 0 
   for ThT data, confirms the tracks exists for all frames
@@ -80,6 +80,8 @@ def post_process(csv_paths, output_path, data_type, frame_number, first_exposure
       continue
     if first_frame_index != 0:
       continue
+    
+    #ThT Filtering
     if data_type == "ThT":
       #filter if end intensity lower than start intensity
       if df["MEAN_INTENSITY_CH1"].iloc[num_frames_tracked - 10: num_frames_tracked-1].mean() <= df["MEAN_INTENSITY_CH1"].iloc[0:int(first_exposure_frame)].mean():
@@ -87,9 +89,14 @@ def post_process(csv_paths, output_path, data_type, frame_number, first_exposure
       # filter if end intensity lower than entire movie average 
       if df["MEAN_INTENSITY_CH1"].iloc[num_frames_tracked - 20: num_frames_tracked - 1].mean() < df["MEAN_INTENSITY_CH1"].iloc[int(first_exposure_frame): num_frames_tracked - 1].mean():
         continue
+
+    #PhC FIltering
     if data_type == "PhC":
       if num_frames_tracked >= frame_number-5:
         continue
+      if spore_set_id in ["M4576_s7" or "M4581_s7"]:
+        if num_frames_tracked > 36:
+          continue
     if data_type == "PhC": #if PhC data, adds a columns that denotes when the frame is germinated
       germination_df = pd.DataFrame([[num_frames_tracked]], columns = ["GERMINATION_FRAME"])
       df = pd.concat([df, germination_df], axis = 1)
@@ -215,8 +222,10 @@ def convert_to_modeldata(csv_paths, output_csv, germinant_given, plot_folder, sp
   model_df.to_csv(output_csv)
 
   #long version
+
   model_df_V2 = pd.DataFrame(model_data_V2, columns = ["SPORE_ID", "FRAME", "X_POSITION", "Y_POSITION", "GERMINATION", "INTENSITY", "AREA", "GERMINANT_EXPOSURE", "ELLIPSE_MINOR", "ELLIPSE_MAJOR", "PERIMETER", "CIRCULARITY", "ELLIPSE ASPECT RATIO"])
   model_df_V2.to_csv(output_csv.replace(".csv", "_V2.csv"))
+  
   print(f"converted to model data and plotted...")
 def plot_spatial(trackfile_spot_path, width, height):
   df = pd.read_csv(trackfile_spot_path)
@@ -243,7 +252,7 @@ def Main(Analysis_base, PhC_base, PhC_csv_name, ThT_base, ThT_csv_name, num_fram
   #divide entire spot file into csvs of tracks and process
   #PhC
   PhC_unprocessed_csv_paths: list[str] = read_spots(PhC_spot_path, Analysis_base, PhC_preprocessed_folder)
-  PhC_processed_csv_paths: list[str] = post_process(PhC_unprocessed_csv_paths, PhC_postprocessed_folder, "PhC", num_frames, first_frame_exposure)
+  PhC_processed_csv_paths: list[str] = post_process(PhC_unprocessed_csv_paths, PhC_postprocessed_folder, "PhC", num_frames, first_frame_exposure, spore_set_id)
   print("\n")
   #ThT
   print(f"working on ThT data...")
